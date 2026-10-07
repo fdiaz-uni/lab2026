@@ -24,8 +24,8 @@ function cabeceraPlantilla() { ?>
 
 	<div class="topnav"> <!-- Con HTML5 utilizar etiqueta NAV -->
 		<ul>
-            <li><a href="acerca_de.php">Quiénes somos</a></li>
-            <li><a href="contacta.php">Contacto</a></li>
+            <li><a href="03a_acerca_de.php">Quiénes somos</a></li>
+            <li><a href="03b_contacta.php">Contacto</a></li>
 		</ul>
 	</div>
 <?php } ?>
@@ -33,7 +33,7 @@ function cabeceraPlantilla() { ?>
 <?php function piePlantilla() { ?>
  
 	<div class="pie"> <!-- Con HTML5 utilizar etiqueta FOOTER -->
-		Informaicón copyright
+		Información copyright
 	</div>
 	<script src="js/fichero-javascript-externo.js"></script> 
 </body>

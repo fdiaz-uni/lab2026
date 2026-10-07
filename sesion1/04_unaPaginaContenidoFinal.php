@@ -6,10 +6,11 @@ require_once "inc/codigo_inicializacion.php";
 define("TITULO_PAGINA", "Una página de contenido ...");
 
 // 3. Inclusión de la plantilla
-require_once "inc/plantilla.php"
+require_once "inc/plantilla.php";
 
-// 4. Generación de la cabecera 
-php cabeceraPlantilla();?>
+// 4. Generación de la cabecera
+cabeceraPlantilla();
+?>
 
 	<!-- Contenido específico de esta página -->
 	<div class="contenido-principal">
