@@ -1,0 +1,6 @@
+﻿<?php
+	// Aquí se escribiría el código que se ejecutará al FINAL de cada script en PHP (código de limpieza)
+	// Se irá incluyendo más adelante...
+	// De momento ... 
+	// vacío
+?>

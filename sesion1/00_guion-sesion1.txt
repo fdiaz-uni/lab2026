@@ -1,0 +1,37 @@
+﻿1. intro_plantilla_inicial.html -> Estructura básica HTML a generar (declaración !DOCTYPE, meta condificación multilingüe, meta viewport dispostivos móviles, título, hoja estilos externa, javascript externo y contenido básico html. Estructuración código app en directorios, uso de URLs relativas y explicar método resolución URLs
+
+2. intro_plantilla_inicial_v2.html -> Añadir estructura al contenido de la página: encabezado, barra de navegación (lista de enlaces), área principal contenido y pie de la página. Introducir estilo básico (css/hoja-estilo-externa.css) y javascript básico (js/fichero-javascript-externo.js)
+
+3. acerca_de.php y contacta.php -> Motivar la generación de páginas mediante PHP a partir de una plantilla. Necesidad de definir una plantilla (inc/plantilla.php) para identificar código repetido en diferentes páginas y aislar ese código, para luego incluirlo en cada página resultado final. En este caso, se utiliza técnica basada en definición de funciones para generación del encabezado y pie de las páginas (cómo se combina php y html) y luego, una vez incluida la plantilla en la página final (explicar include() de php), invocar a las funciones para generar prólogo y epílogo de la página html resultante.
+
+
+4. unaPaginaContenido.php -> Enriquecer la plantilla con el código de inicialización y de limpieza: motivación y ejemplo. Diferencia entre include (warning) vs. require (error) y include vs. include_once
+
+A medida que una aplicación web crece, necesitamos más control sobre cómo y cuándo se cargan los diferentes archivos. PHP nos ofrece varias herramientas para ello:
+
+A) include vs. require (Gestión de errores críticos)
+-------------------------------------------------------------------------------
+* include: Si el archivo solicitado no se encuentra, PHP emite un aviso (Warning). La ejecución del script CONTINÚA. 
+  - Cuándo usarlo: Para fragmentos no vitales (ej. un banner publicitario lateral). Si falla, el resto de la página se sigue mostrando.
+  
+* require: Si el archivo solicitado no se encuentra, PHP genera un error fatal (Fatal Error) y DETIENE la ejecución del script de inmediato.
+  - Cuándo usarlo: Para archivos vitales (ej. la plantilla base 'plantilla.php' o la conexión a la base de datos). Si no carga la cabecera o la base de datos, 
+    no tiene sentido que el servidor siga procesando la página.
+
+B) El modificador "_once" (Control de redundancia)
+-------------------------------------------------------------------------------
+Tanto 'include_once' como 'require_once' aseguran que un archivo se incluya UNICAMENTE UNA VEZ a lo largo de toda la ejecución de la página, ignorando 
+peticiones de inclusión duplicadas.
+
+* Por qué es vital: Si incluimos dos veces un archivo que define funciones (como 'plantilla.php'), PHP fallará inmediatamente con un error fatal: 
+  "Cannot redeclare function...".
+* Nota técnica: Aunque '_once' previene estos errores catastróficos, obliga a PHP a mantener un historial interno de archivos cargados para comprobar duplicados. 
+  Úsalo con criterio para archivos de configuración, lógica o funciones.
+
+C) Modularización: Lógica de negocio vs. Presentación Visual 
+-------------------------------------------------------------------------------
+En el archivo 'unaPaginaContenido.php' verás la incorporación de dos archivos:
+  - inc/codigo_inicializacion.php
+  - inc/codigo_finalizacion.php
+
+Es una *** BUENA PRÁCTICA *** separar los archivos que "hacen cosas silenciosas" (Lógica: iniciar sesión, conectar a base de datos, procesar un formulario) de los archivos que "dibujan cosas en la pantalla" (Vista: plantilla.php). *** SIEMPRE DEBERÍA PROCESARSE *** la lógica ANTES de renderizar cualquier etiqueta HTML.

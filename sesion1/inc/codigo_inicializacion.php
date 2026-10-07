@@ -1,0 +1,6 @@
+﻿<?php
+	// Aquí se escribiría el código que se ejecutará al INICIO de cada script en PHP (código de inicialización)
+	// Se irá incluyendo más adelante...
+	// De momento ... 
+	// vacío
+?>
