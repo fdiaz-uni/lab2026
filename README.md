@@ -7,7 +7,7 @@ Bienvenido al repositorio con los ejemplos vistos en el laboratorio de la asigna
 ## Instrucciones para Alumnos
 
 ### 1. Primera descarga (Clonar el repositorio)
-Si es la primera vez que vas a trabajar con este material, abre la terminal de tu máquina Linux, navega hasta la carpeta donde quieras guardar la asignatura y ejecuta:
+Si es la primera vez que vas a trabajar con este material, abre la terminal de tu máquina Linux, muevete a la carpeta donde quieras guardar la asignatura los ejemplos (se recomienda ~/public_html si tienes configurado los sitios personales de usuario) y ejecuta:
 
 ```bash
 git clone https://github.com/fdiaz-uni/lab2026.git
