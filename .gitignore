@@ -1,0 +1,19 @@
+# Archivos temporales del sistema Linux
+.DS_Store
+.directory
+*~
+*.swp
+*.tmp
+*.log
+
+# Carpetas de caché o entornos virtuales
+.cache/
+__pycache__/
+
+# Archivos de configuración de editores comunes (por si usas VS Code o similares)
+.vscode/
+.idea/
+
+# Archivos temporales de subidas FTP o copias de seguridad
+*.bak
+*.old
