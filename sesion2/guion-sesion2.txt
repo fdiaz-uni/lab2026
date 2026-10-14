@@ -1,0 +1,58 @@
+﻿SESIÓN 2 PHP
+
+1. Conexión con base de datos -> Añadir código conexión en "inc/codigo_inicializacion.php" y de desconexión en "inc/codigo_finalizacion.php". Introducir API MySQLi (versiones procedimental y orientada a objetos), introducir PDO (PHP Data Objects y MySQLi vs. PDO. Prohibir uso de extensión MySQL (sin sufijo i). Explicar brevemente código añadido.
+
+2. Configuración procesador PHP -> Uso de ob_start() en "inc/codigo_inicializacion.php" y ob_end_flush() en "inc/codigo_finalizacion.php" para controlar cuándo se vuelca la salida de php sobre la respuesta http.
+
+3. inc/plantilla.php -> Revisión para la utilización de Bootstrap. Clases básicas: container, nav, nav-pills, well, form-inline, form-control, btn, btn-primary, table, table-stripped, etc. Ver resultado pasos 1-3 en otraPaginaContenido.php
+
+4. Patrón de diseño MVC (Model View Controller): Patrón general, aplicable a muchos casos en desarrollo web, total o parcialmente. 
+MODELO, componente software que encapsula (en forma de función/método dentro de un script/objeto PHP) las consultas de BBDD sobre una única entidad del modelo de datos, habitualmente asociados a casos de uso CRUD (Create, Read, Update, Delete). VISTA, típicamente formularios (editables o no, vacíos o precargados) de entidades individuales, índices con conjuntos de instancias de una entidad, ambos con controles de acción para procesar información. Habitualmente se generan como consultas a partir del modelo de datos. CONTROLADOR, script/código PHP que discrimina qué tipo de acción se realiza sobre la entidad (que se puede pasar como parámetro en la URL petición como query string o como input oculto del formulario) y redirigir a la siguiente página.
+
+5. Patrón de diseño PRG (Post-Redirect-Get): Específico para tratar formularios asociados a acciones que implican un cambio en el estado persistente del servidor.
+Get formulario registro. Después de petición GET, hacer petición POST para procesar datos del formulario tras submit. El script invocado para procesar datos formularios, deberá realizar una redirección HTTP por programa. Las peticiones POST (que no devuelven contenido HTML) no se cachean por parte del navegador (y por tanto no se guardan datos de peticiones POST anteriores), no se introducen en el historial del navegador (y por tanto no se pueden reactuar peticiones de procesamiento de información metiante peticiones POST hechas con anterioridad). 
+A efectos prácticos: i) siempre se hace una petición POST después de una petición GET, y ii) de una petición POST a una petición GET se pasa a través de una redirección en la respuesta del POST.
+
+[Cliente] --- (GET: ver formulario/tabla) ---> indice-personas.php (VISTA)
+   ▲                                                    │
+   │                                              (Hace SUBMIT)
+(Redirección GET 303)                                   ▼
+   └────────────────────────────────────────── controlador-persona.php (CONTROLADOR)
+                                                  (Procesa POST y llama al MODELO)
+
+
+6. Gestión de formularios desde el lado Cliente: (1) Típicamente, como consecuencia de seguir un enlace, incluido en un índice, barra de navegación, etc., se realiza una petición GET, para consultando los datos del servidor, generar un formulario HTML en la respuesta. (2) En la estructura del formulario generado, fijar atención en atributos "method" y "action", típicamente refiriéndose al script controlador que se invocará mediante una petición POST que codifican estos atributos. (2) Posibles técnicas de programación para invocar qué acción de la entidad se invocará al hacer el submit del formulario: i) especificado en la query string de la url del action, ii) especificado como un campo oculto del propio formulario, iii) a través de una petición AJAX que especifique el método de petición HTTP (estilo API-REST)
+
+7. Gestión de formularios desde el lado Servidor: (1) Cómo acceder a datos del formulario desde un script PHP: introducir arrays superglobales $_POST y $_GET. (2) Cómo realizar una redirección por programa desde un script PHP, uso de header(cabecera-http, reemplazo, codigo-respuesta), en concreto, con invocación "header("Location:indice-personas.php?resultado=XXX", true, 303);", donde XXX será el nemotécnico concreto que informe del resultado de la acción. (3) Cómo informar del resultado de una acción, en este caso, como un parámetro en la query string de la página a la que se redirige después de POST e incluyendo un fragmento de código adicional en la plantilla genérica, inc/alertas.php. 
+ATENCIÓN!!!! Si se olvida incluir ob_start() en "inc/codigo_inicializacion.php" y se imprime un solo espacio en blanco o HTML antes de un header(), PHP lanzará el temido error "Cannot modify header information - headers already sent". El uso de ob_start() evita este problema (ver punto 2).  
+
+8. Ilustrar uso patrones introducidos. VISTA: indice-personas.php; CONTROLADOR: controlador-persona.php; MODELO: inc/modelo-persona.php
+***MODELO MVC***
+
+                *Finalidad*             *Asociada pet-HTTP?*   *Generan HTML?*     *Técnicas*
+MODELOS
+                Encapsulan las consultas,           NO                 NO           - CONSULTAS PREPARADAS
+                de cualquier tipo, a BBDD.                                            (PDO o MySQLi POO) con
+                Gestionan el estado persistente.                                      parámetros enlazados.
+VISTAS
+                Implementan la IU de la              SÍ                 SÍ          - Inclusión de componentes PHP.
+                App. Muestran los datos                                             - SANEAMIENTO DE SALIDA:
+                recuperados por el modelo.                                            uso estricto de htmlspecialchars()
+                                                                                      al imprimir textos dinámicos.
+CONTROLADORES
+                Discriminan acciones, reciben        SÍ                 NO          - VALIDACIÓN de datos entrantes 
+                peticiones, alteran estados y                                         ($_POST, filter_var).
+                ordenan redirecciones.                                              - REDIRECCIONES HTTP:
+                                                                                      uso de header("Location: ...")
+                                                                                      bajo el patrón PRG.
+
+
+9. Prevención inyección de código JS y SQL. Saneamiento de todas las entradas recibidas en el lado servidor. Inclusión de "inc/codigo_funciones.php" en plantilla genérica. Si se previene inyección JS (ataques XSS), básicamente se sanean las entradas con "htmlspecialchars()", aparte de otros filtros adicionales, stripslashes() y trim(). 
+ATENCIÓN!!!La función htmlspecialchars() es una de las herramientas de seguridad más importantes en PHP para prevenir ataques de Inyección de Código JavaScript (XSS o Cross-Site Scripting). Su objetivo principal es transformar caracteres especiales de HTML que el navegador podría "ejecutar" (como < o >) en texto plano inofensivo (entidades HTML como &lt; o &gt;).
+Ejemplo: Si la entrada modificada por un usuario es:
+'><script>alert("ko")</script>
+Al pasar por htmlspecialchars(..., ENT_QUOTES, 'UTF-8'), PHP la transforma internamente en:
+&#039;&gt;&lt;script&gt;alert(&quot;ko&quot;)&lt;/script&gt;
+Para prevenir la inyección SQL se realizarán CONSULTAS PREPARADAS mysql (técnica preferida). [ver ejemplos del modelo]
+
+
