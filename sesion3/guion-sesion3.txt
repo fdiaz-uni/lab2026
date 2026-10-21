@@ -1,0 +1,68 @@
+﻿===============================================================================
+SESIÓN 3 PHP - COMPONENTES Y CRUD COMPLETO (MVC + PRG)
+===============================================================================
+
+En esta sesión se presenta una nueva versión de la aplicación que se caracteriza por: i) la reutilización de un componenete de la vista (el formulario que se comparte por la acción alta y modificación) y por completar las acciones CRUD (Alta, Consulta, Modificación y Borrado), todo ello preveniendo la inyección de código (SQL o JS) y manteniendo el uso del patrón PRG (Post-Redirect-Get).
+
+-------------------------------------------------------------------------------
+1. EL COMPONENTE REUTILIZABLE: inc/componente-persona.php
+-------------------------------------------------------------------------------
+El código de los formularios para añadir y modificar una persona comparte la misma estructura visual. Para evitar duplicar código, se aísla el formulario en un único archivo reutilizable (inc/componente-persona.php) que discrimina dinámicamente el 
+contexto en función del identificador de la URL:
+
+* Detección del contexto: Se extrae el parámetro 'id' de la Query String mediante el array superglobal $_GET. Se procesa de forma segura forzando el tipo de dato a entero con intval() y aplicando el operador de fusión de nulos (?? 0).
+  - Si $id === 0: El componente detecta de forma automática que se solicita un ALTA. Configura la $etiqueta como "Nueva persona" e inicializa un array ($fila) de datos vacío, para evitar errores de índices indefinidos (Undefined keys).
+  - Si $id !== 0: El componente detecta que se solicita una MODIFICACIÓN. Configura la $etiqueta como "Modificar persona" e invoca a la función del modelo getPersona() para precargar los datos reales desde la BD en el array $fila.
+
+* Saneamiento y Seguridad en la Vista:
+  - Todo valor dinámico inyectado en los atributos 'value' de los inputs o dentro del <textarea> se envuelve estrictamente en la función htmlspecialchars(..., ENT_QUOTES, 'UTF-8') para evitar inyecciones XSS.
+  - Para evitar fallos en el envío de campos vacíos (como el botón radio 'fSexo' cuando el usuario no selecciona ninguna opción), se establece una opción marcada por defecto ('checked') y se controla su estado mediante operadores ternarios en función de los datos de la base de datos.
+  - El formulario unifica su acción apuntando siempre a 'controlador-persona.php' mediante método POST, enviando de forma invisible el parámetro de control 'nuevaModificarPersona' y el campo oculto 'fId' con el valor de la variable $id.
+
+-------------------------------------------------------------------------------
+2. ACTUALIZACIÓN DE LAS VISTAS PRINCIPALES
+-------------------------------------------------------------------------------
+* indice-personas.php:
+  - Se elimina el antiguo bloque manual del formulario de inserción y se sustituye limpiamente por un include_once "inc/componente-persona.php". Al no existir el parámetro 'id' en la URL de esta página, el componente genera, automáticamente, el formulario en su modalidad de "Alta".
+  - Se añade un enlace a 'modificar-persona.php' inyectando el ID saneado mediante urlencode() en la Query String para abrir de forma segura la vista de edición.
+
+* modificar-persona.php (Nueva Vista):
+  - Actúa de forma simétrica al índice. Invoca a las funciones compartidas de la plantilla pasando el parámetro cabeceraPlantilla('personas') para mantener el enlace activo del menú en la barra de navegación principal.
+  - Incluye el mismo componente 'inc/componente-persona.php'. Como la URL de esta página sí va acompañada de un '?id=X', el componente se genera, automáticamente, el formulario en su de "Modificación", mostrando los datos precargados (y recuperados de la BD).
+
+-------------------------------------------------------------------------------
+3. IMPLEMENTACIÓN DE BORRADO SEGURO (MÉTODO POST)
+-------------------------------------------------------------------------------
+* El peligro del método GET: Enlazar una acción destructiva (como borrar) a un simple enlace de hipertexto <a> genera una petición GET. Esto viola las directrices de diseño web (las peticiones GET deberían ser seguras e idempotentes, por lo que   nunca deberían alterar el estado persistente del servidor). Además, expone la web a que arañas de buscadores o pre-cargas de navegadores borren datos por accidente.
+
+* La solución correcta (POST): En 'indice-personas.php', la acción de borrado se envuelve dentro de un formulario independiente en línea con ***method="post"*** y cuyo ***action*** es ***controlador-persona.php***.
+  - Se incluye una confirmación en el lado del cliente mediante un evento JS (onsubmit="return confirm(...)") para evitar pulsaciones accidentales.
+  - Con el formulario se envía un campo oculto con el nombre 'borrarPersona' y el 'fId' correspondiente.
+
+-------------------------------------------------------------------------------
+4. AMPLIACIÓN DEL CONTROLADOR: controlador-persona.php
+-------------------------------------------------------------------------------
+El controlador se transforma en un enrutador único y compacto para todas las acciones sobre la entidad ***persona***, procesando todas las peticiones, exclusivamente, en base al array superglobal $_POST:
+
+* Bloque 'nuevaModificarPersona':
+  - Extrae el ID forzándolo a entero con intval($_POST["fId"] ?? 0).
+  - Captura y limpia de espacios en blanco las cadenas de texto mediante trim() y el operador de fusión de nulos (?? "") para evitar Warnings si faltan datos.
+  - Si $id === 0, delega la persistencia en la función del modelo nuevaPersona() y define la clave de notificación como 'persona-added' o 'persona-ko'.
+  - Si $id !== 0, delega la persistencia en modificarPersona() y define la clave específica como 'persona-updated' o 'persona-update-ko'.
+
+* Bloque 'borrarPersona':
+  - Captura el identificador numérico, invoca a la función del modelo borrarPersona() y define las respuestas 'persona-deleted' o 'persona-delete-ko'.
+
+* Cierre del Patrón PRG: El controlador jamás genera código HTML. Responde siempre redireccionando al cliente mediante la función header("Location: ...", true, 303) añadiendo en la URL la clave del resultado obtenido, en forma de query string de la URL a la que se redirige.
+
+-------------------------------------------------------------------------------
+5. CAPA DE PERSISTENCIA Y ALERTAS (MODELOS Y COMPONENTES GLOBALES)
+-------------------------------------------------------------------------------
+* Modelo de Datos (inc/modelo-persona.php):
+  - Se amplía el archivo con las funciones modificarPersona() y borrarPersona() utilizando de forma estricta la API MySQLi Orientada a Objetos y en la modalidad de consultas preparadas ($conexionBD->prepare), para prevenir SQLi (inyección de código SQL).
+  - Las consultas preparadas incluyes bloques try-catch para capturar cualquier excepción, por ejemplo,  'mysqli_sql_exception' que puede dispararse cuando ocurre una colisión por la restricción UNIQUE de la columna 'cEmail'. De este modo, el catch captura la excepción (error) de forma segura, evita que PHP paralice el script y retorna un false  para que el controlador pueda gestionar la redirección de error limpiamente.
+
+* Gestión Modular de Notificaciones (inc/alertas.php):
+  - Se evita por completo el uso de estructuras condicionales anidadas if-elseif (código espagueti).
+  - Para ello, se define un Array Asociativo estático ($catalogoAlertas) que almacena de forma centralizada todos los pares de "mensaje HTML" y "clase CSS de Bootstrap" para el Alta, Modificación y Borrado.
+  - La lógica para generar la alerta específica, según el caso, se vuelve universal empleando array_key_exists(). De este modo, la ampliación de la colección de los mensajes de alerta (en próximas versiones de la aplicación) se reduzca a agragar más elmentos al array de configuración, sin necesidad de modificar el código HTML que se genera.
