@@ -1,0 +1,89 @@
+﻿===============================================================================
+SESIÓN 4 - SUBVERSIÓN 1: REFRACTORIZACIÓN HACIA UNA ARQUITECTURA LIMPIA (MVC)
+===============================================================================
+
+En esta etapa se modicica la estructura del proyecto web. Se abandona la distribución plana de archivos en la raíz para implementar un patrón de carpetas desacoplado basado en la separación de responsabilidades (Negocio, Presentación, 
+Control y archivos estáticos (assets)), utilizando solo un único punto de entrada a la app: el enrutador o controlador frontal (frontal controller).
+
+-------------------------------------------------------------------------------
+1. NUEVA ESTRUCTURA DIRECTORIOS Y MAPA DE RESPONSABILIDADES
+-------------------------------------------------------------------------------
+El proyecto ahora se reorganiza bajo un árbol jerárquico más complejo:
+
+├── index.php                   # CONTROLADOR FRONTAL (Único punto de entrada a la App)
+├── assets/                     # Recursos estáticos (públicos) del cliente
+│   ├── css/                    # Hojas de estilo externas (fichero-css-externo.css)
+│   ├── js/                     # Scripts de comportamiento (fichero-javascript-externo.js)
+│   └── sql/                    # Scripts de despliegue de base de datos (tweb.sql)
+├── inc/                        # Componentes y configuraciones globales del servidor
+│   ├── alertas.php             # Catálogo dinámico centralizado de notificaciones
+│   ├── codigo_finalizacion.php # Cierre de buffers HTTP y conexiones de datos
+│   ├── codigo_inicializacion.php # Inicializador global del entorno
+│   └── plantilla.php       	# Plantilla genérica, común a todas las vistas
+└── src/                        # Código fuente de la aplicación (Lógica de negocio completa)
+    ├── controladores/          # Capa de Control (Orquestores de acciones)
+    │   └── persona.php         # controlador-persona.php unificado (Alta/Mod/Borrado)
+    ├── modelos/                # Capa de Modelo (Persistencia y queries SQL puras)
+    │   └── persona.php         # modelo-persona.php con sentencias preparadas y try-catch
+    └── vistas/                 # Capa de Vista (Plantillas de interfaz e IU)
+        └── persona/
+            ├── formulario.php  # componente-persona.php (Formulario dinámico compartido)
+            └── indice.php      # indice-personas.php (Listado general de registros)
+
+-------------------------------------------------------------------------------
+2. EL CONTROLADOR FRONTAL: index.php
+-------------------------------------------------------------------------------
+Se introduce el patrón de diseño "Front Controller" mediante el script raíz 'index.php'. A partir de este momento, el cliente web ya no solicita las vistas directamente en la URL (evitando exponer la estructura interna del servidor). Todo el tráfico fluye a través de este único enrutador general.
+
+* Mecanismo de funcionamiento:
+  - Captura y arranque: Es el primer archivo en ejecutarse. Su primera tarea es incluir de manera directa el entorno global: require_once "inc/codigo_inicializacion.php";
+  - Enrutamiento por parámetros: Inspecciona el array superglobal $_GET buscando la variable de control 'seccion' (ej: index.php?seccion=personas) y opcionalmente parámetros de acción (ej: &accion=modificar&id=5).
+  - Carga selectiva de vistas: Mediante una estructura de control (switch/if), se determina qué archivo de la capa 'src/vistas/' debe cargarse en el cuerpo central.
+  - Orquestación de la interfaz: El propio Front Controller se encarga de invocar a cabeceraPlantilla() y piePlantilla(), envolviendo la vista solicitada de forma automática y garantizando una maquetación homogénea.
+  - Inmunidad de inclusión: Como index.php se ejecuta físicamente en la raíz del proyecto, el valor de RAIZ_FISICA coincide con su propia ubicación, facilitando la carga limpia de cualquier subfichero.
+	
+-------------------------------------------------------------------------------
+3. IMPLEMENTACIÓN DE LA PORTABILIDAD: RAÍCES DINÁMICAS (inc/codigo_inicializacion.php)
+-------------------------------------------------------------------------------
+Al organizar los archivos en subcarpetas del sistema, las rutas relativas clásicas (ej: "../../inc/") son propensas a romperse si el proyecto se muda de directorio o de servidor, es decir, se modifica el despliegue de la app. 
+
+Para resolver este problema de forma definitiva, deben calcularse dos constantes dinámicas y universales en el arranque del sistema:
+
+A) RAIZ_FISICA (Para directivas del servidor: require_once, include_once)
+   - Utiliza la constante mágica __DIR__ y la función dirname() para calcular la ruta absoluta en el disco duro del servidor web. 
+   - Todas las llamadas del servidor se vuelven inmunes a la profundidad del script.
+   - Ejemplo: require_once RAIZ_FISICA . "src/modelos/persona.php";
+
+B) RAIZ_URL (Para elementos del cliente web: action, href, src)
+   - Detecta de forma automática la porción de la URL del navegador que corresponde al directorio de despliegue (ej: "/~fdiaz/lab2026/.../subversion1/").
+   - Garantiza que los formularios y hojas de estilo apunten al lugar correcto.
+   - Ejemplo: <form action="<?= RAIZ_URL ?>src/controladores/persona.php" method="post">
+
+-------------------------------------------------------------------------------
+4. TRATAMIENTO DE RUTAS EN LA CAPA DE CONTROL (src/controladores/persona.php)
+-------------------------------------------------------------------------------
+* El controlador de la entidad Persona pasa de la raíz a su ubicación definitiva en 'src/controladores/persona.php'.
+* Al ejecutarse de forma aislada en segundo plano tras un submit, la primera línea del script debe resolver de forma relativa y manual la subida de dos niveles para enganchar el inicializador:
+  - require_once "../../inc/codigo_inicializacion.php";
+* A partir de esa línea, el controlador se vuelve autónomo haciendo uso de la constante RAIZ_FISICA para cargar sus dependencias de datos:
+  - require_once RAIZ_FISICA . "src/modelos/persona.php";
+* El patrón PRG se soporta inyectando la raíz dinámica del navegador en las redirecciones finales de HTTP:
+  - header("Location: " . RAIZ_URL . "index.php?seccion=personas&resultado=$notificacion", true, 303);
+
+-------------------------------------------------------------------------------
+5. ADAPTACIÓN DEL COMPONENTE FORMULARIO (src/vistas/persona/formulario.php)
+-------------------------------------------------------------------------------
+* El antiguo archivo 'componente-persona.php' se traslada y renombra de forma semántica bajo la carpeta de su módulo/entidad correspondiente.
+* Mantiene su lógica de enrutamiento interno: si $_GET['id'] es 0, actúa en modo Alta; en caso contrario, actúa en modo Edición.
+* El atributo 'action' del formulario HTML se actualiza utilizando la constante global de URL de navegación para asegurar el envío directo hacia la nueva ubicación del controlador:
+  - <form action="<?= RAIZ_URL ?>src/controladores/persona.php" method="post" class="form-inline">
+
+-------------------------------------------------------------------------------
+6. ADAPTACIÓN DEL ÍNDICE DE REGISTROS (src/vistas/persona/indice.php)
+-------------------------------------------------------------------------------
+* Hace uso del formulario modularizado, incluyéndolo de forma segura referenciando a su nueva ruta física:
+  - include_once RAIZ_FISICA . "src/vistas/persona/formulario.php";
+* El botón "modificar" se actualiza para apuntar de forma absoluta a la nueva localización del componente de edición:
+  - <a href="<?= RAIZ_URL ?>src/vistas/persona/formulario.php?id=<?= $idSeguro ?>" ...>
+* El formulario en línea, empleado para la eliminación física (Borrado seguro por POST) se redirige hacia el controlador correctamente:
+  - <form action="<?= RAIZ_URL ?>src/controladores/persona.php" method="post" ...>
