@@ -3,7 +3,7 @@ SESIÓN 4 - SUBVERSIÓN 1: REFRACTORIZACIÓN HACIA UNA ARQUITECTURA LIMPIA (MVC)
 ===============================================================================
 
 En esta etapa se modicica la estructura del proyecto web. Se abandona la distribución plana de archivos en la raíz para implementar un patrón de carpetas desacoplado basado en la separación de responsabilidades (Negocio, Presentación, 
-Control y archivos estáticos (assets)), utilizando solo un único punto de entrada a la app: el enrutador o controlador frontal (frontal controller).
+Control y archivos estáticos ), utilizando solo un único punto de entrada a la app: el enrutador o controlador frontal (frontal controller).
 
 -------------------------------------------------------------------------------
 1. NUEVA ESTRUCTURA DIRECTORIOS Y MAPA DE RESPONSABILIDADES
@@ -11,7 +11,7 @@ Control y archivos estáticos (assets)), utilizando solo un único punto de entr
 El proyecto ahora se reorganiza bajo un árbol jerárquico más complejo:
 
 ├── index.php                   # CONTROLADOR FRONTAL (Único punto de entrada a la App)
-├── assets/                     # Recursos estáticos (públicos) del cliente
+├── recursos/                   # Recursos estáticos (públicos) del cliente
 │   ├── css/                    # Hojas de estilo externas (fichero-css-externo.css)
 │   ├── js/                     # Scripts de comportamiento (fichero-javascript-externo.js)
 │   └── sql/                    # Scripts de despliegue de base de datos (tweb.sql)
@@ -23,7 +23,7 @@ El proyecto ahora se reorganiza bajo un árbol jerárquico más complejo:
 └── src/                        # Código fuente de la aplicación (Lógica de negocio completa)
     ├── controladores/          # Capa de Control (Orquestores de acciones)
     │   └── persona.php         # controlador-persona.php unificado (Alta/Mod/Borrado)
-    ├── modelos/                # Capa de Modelo (Persistencia y queries SQL puras)
+    ├── modelos/                # Capa de Modelo (Persistencia y queries SQL puras)-
     │   └── persona.php         # modelo-persona.php con sentencias preparadas y try-catch
     └── vistas/                 # Capa de Vista (Plantillas de interfaz e IU)
         └── persona/

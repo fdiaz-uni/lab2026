@@ -1,0 +1,125 @@
+﻿===============================================================================
+SESIÓN 5 - VALIDACIÓN EN EL SERVIDOR Y GESTIÓN DE CONTEXTOS CON SESIONES
+===============================================================================
+
+El objetivo de esta sesión es dotar a la aplicación de mecanismos de validación robustos en el lado del servidor, utilizando variables de sesión ($_SESSION) para guardar y transmitir el estado de los errores entre peticiones HTTP aisladas (PRG).
+
+ANTECEDENTES
+
+Atención! Hasta ahora, los scripts desarrollados solo previenen la inyección de código. Inyección de código JS porque cualquier entrada de usuario (datos formulario) o parámetros query string url (en borrado y modificación) se pasan por filtros de saneamiento basados en la función htmlspecialchars(). La inyección de código SQL se previene con el uso de consultas preparadas en MySQL en aquellos casos en los que la consulta debe incluir datos suministrados por el usuario (ver modelo).
+
+Los filtros de saneamiento (sanitizing) cumplen la misión de alterar la entrada de usuario (si fuera necesario) para prevenir la inyección de código. Ahora se trata de aplicar filtros sintácticos (fundamentalmente, utilizando expresiones regulares mediante la función preg_match() de PHP o utilizando filtros ya definidos con filter_var() de PHP, ver manual). Además, se pueden comprobar otros condicionantes como son la obligatoriedad de la presencia de un dato de usuario.
+
+Además de llevar a cabo la validación, en el caso de la gestión de formularios se quieren mantener los valores válidos (para reutilizarlos) y describir el error asociado con un mensaje (para ayudar al usuario) cuando haga un nuevo intento de completar la información. 
+
+Las sesiones en PHP, tienen varios usos, no solo el mantenimiento de una sesión de usuario (una vez que un usuario haya hecho un login correcto dentro del sistema), hay más usos y aquí se muestra uno concreto.
+
+Atención! Independiente del uso o no de variables de sesión, para poder utilizar sesiones en PHP hay que habilitarlas. ES NECESARIO QUE TODO SCRIPT PHP INVOQUE A LA FUNCIÓN session_start() para poder empezar a utilizar variables de sesión. Para ello en "inc/codigo_inicializacion.php" se ha incluido la invocación a esta función. La habilitación de este modo, hace que PHP determine si un cliente solicita o no un recurso por primera vez al servidor. Si es la primera vez, genera una clave de sesión, y en la respuesta HTTP indica al cliente que almacene dicha clave de sesión con la cabecera-http Set-Cookie. En posteriores peticiones del mismo cliente, el navegador ya sabe que deberá incluir esta cookie de sesión, empleando para ello la cabecera-http Cookie. 
+
+Atención! Con las sesiones activadas, PHP también habilita el array asociativo superglobal $_SESSION[], y enuna vez recibida en una petición HTTP la Cookie con el identificador de la clave de sesión asociado a ese cliente, PHP podrá recuperar las variables de sesión (las claves utilizadas dentro del array asociativo $_SESSION[] exclusivas de ese cliente.
+
+Una vez habilitadas las sesiones, las aplicaciones web pueden definir un protocolo de actuación para el tratamiento de las mismas, en este caso, se hace para mantener el contexto de validación de un formulario entre peticiones.
+
+-------------------------------------------------------------------------------
+1. EL CONCEPTO DE VALIDACIÓN DEFENSIVA (BACKEND VS FRONTEND)
+-------------------------------------------------------------------------------
+* Aunque los atributos de HTML5 (como 'required' o 'type="email"') son útiles para mejorar la experiencia del usuario, un atacante puede saltárselos fácilmente desactivando JavaScript o editando el código del DOM desde el inspector.
+* La única validación real y obligatoria es la que se realiza en el SERVIDOR. 
+* En esta sesión se utilizan funciones nativas como filter_var() combinadas con los flags FILTER_VALIDATE_EMAIL y FILTER_VALIDATE_URL para garantizar la estrictura sintáctica de las cadenas antes de mandarlas al modelo.
+
+-------------------------------------------------------------------------------
+2. PERSISTENCIA DE ESTADO TEMPORAL: VARIABLES DE SESIÓN ASÍNCRONAS (patrón flash data)
+-------------------------------------------------------------------------------
+El patrón PRG exige que el controlador termine siempre en una redirección header(). Al hacer esto, la petición HTTP original finaliza y los datos que el usuario escribió se pierden de la memoria del servidor.
+
+Para solucionar este aislamiento, se implementa un canal temporal de intercambio, uno de los usos posibles de las variables de sesión:
+1. El Controlador valida: Si detecta errores, los guarda en $_SESSION['errores_persona'] y guarda la entrada que escribió el usuario en $_SESSION['datos_persona']. Una vez hecho esto, redirige al formulario de partida.
+2. La Vista recupera y destruye (Flash Data): Al cargarse el formulario de nuevo, el script comprueba si existen estas variables en la sesión. Si existen, las extrae para rellenar los inputs con el texto fallido y activa las clases de error CSS de Bootstrap (.has-error). 
+3. Inmediatamente después de leerlos, el script ejecuta un 'unset()' sobre las variables de sesión. Esto garantiza que el error solo se muestre una vez y desaparezca si el usuario refresca la página manualmente (F5).
+
+-------------------------------------------------------------------------------
+3. INTEGRACIÓN CON INTERFACES CONTEXTUALES DE BOOTSTRAP
+-------------------------------------------------------------------------------
+El componente 'src/vistas/persona/formulario.php' aprovecha las clases de utilidad de Bootstrap para ofrecer una experiencia visual rica:
+- Si la clave del input existe en el array de errores, inyecta dinámicamente la clase '.has-error' en el contenedor del grupo, tiñendo el input de rojo.
+- Añade un bloque de texto auxiliar '.help-block' acompañado de iconos de alerta de Bootstrap (glyphicon-exclamation-sign) para describir textualmente al usuario qué regla de validación se ha incumplido.
+
+A modo de resumen, el flujo de validación y persistencia de datos quedaría como sigue:
+=======================================================================================
+           DIAGRAMA DE FLUJO: CICLO DE VALIDACIÓN Y PERSISTENCIA (POST -> PRG)
+=======================================================================================
+
+      [ CLIENTE: src/vistas/persona/formulario.php ]
+                            │
+                    (Hace clic en SUBMIT)
+                            │
+                            ▼
+     [ CONTROLADOR: src/controladores/persona.php ]
+                            │
+               ¿Pasa la Validación de Entrada?
+               (trim, filter_var, empty...)
+                            │
+               ┌────────────┴────────────┐
+            [ NO ]                    [ SÍ ]
+               │                         │
+               ▼                         ▼
+    ¿Qué hace el Controlador?      ¿Qué hace el Controlador?
+   ┌───────────────────────┐      ┌────────────────────────┐
+   │ 1. Guarda ERRORES en  │      │ 1. Llama al MODELO:    │
+   │    $_SESSION          │      │    nuevaPersona() o    │
+   │ 2. Guarda DATOS en    │      │    modificarPersona()  │
+   │    $_SESSION          │      └───────────┬────────────┘
+   └───────────┬───────────┘                  │
+               │                              ▼
+               │                    [ CAPA DE PERSISTENCIA ]
+               │                 [ inc/modelo-persona.php ]
+               │                              │
+               │                ¿La BBDD acepta la consulta?
+               │                (Campos obligatorios, UNIQUE)
+               │                              │
+               │                 ┌────────────┴────────────┐
+               │              [ NO ]                    [ SÍ ]
+               │                 │                         │
+               │                 ▼                         ▼
+               │           Bloque catch {}            Bloque try {}
+               │        ┌──────────────────┐      ┌──────────────────┐
+               │        │ 1. Captura SQLi  │      │ 1. Guarda en BD  │
+               │        │    Exception     │      │ 2. Retorna OK    │
+               │        │ 2. Retorna FALSE │      └────────┬─────────┘
+               │        └────────┬─────────┘               │
+               │                 │                         │
+               │                 ▼                         ▼
+               │           El Controlador            El Controlador
+               │           recibe: FALSE             recibe: OK
+               │        ┌──────────────────┐      ┌──────────────────┐
+               │        │ Asigna:          │      │ Asigna:          │
+               │        │ 'persona-ko' o   │      │ 'persona-added'  │
+               │        │ 'update-ko'      │      │ o 'updated'      │
+               │        └────────┬─────────┘      └────────┬─────────┘
+               │                 │                         │
+               └─────────────────┼─────────────────────────┘
+                                 │
+                                 ▼
+                     [ REDIRECCIÓN HTTP (PRG) ]
+               header("Location: " . RAIZ_URL . "...")
+                                 │
+         ┌───────────────────────┴───────────────────────┐
+         ▼                                               ▼
+ [ RUTA A: Volver al Formulario ]              [ RUTA B: Volver al Índice ]
+ (index.php?seccion=personas&accion=...)       (index.php?seccion=personas&resultado=...)
+         │                                               │
+         ▼                                               ▼
+ [ LA VISTA RECUPERA LA SESIÓN ]               [ LA VISTA CARGA ALERTAS ]
+ - Lee $_SESSION y rellena inputs.             - Lee $_GET['resultado'] a
+ - Pinta errores en rojo (.has-error).           través del array del catálogo.
+ - Hace unset() de los buffers (Flash).        - Muestra caja verde de éxito
+         │                                       o roja de error de persistencia.
+         ▼                                               ▼
+    [ FIN DEL CICLO DE PETICIÓN ]                  [ FIN DEL CICLO DE PETICIÓN ]
+=======================================================================================
+
+Atención!!! Distinción entre comprobaciones de entrada (responsabilidad del controlador, almacenamiento del contexto de validación en $_SESSION, redirección a la vista de partida (form), recuperación del contexto de validación, visualización resaltada y borrado del contexto de validación (flash data) VS comprobaciones de las reglas de negocio (responsabilidad del modelo, capturadas en el bloque CATCH de la ejecución de la consulta, e informada en el resultado de la redirección y visualizado en inc/alertas.php)
+
+Atención!!! En el diagrama de flujo, todo lo que ocurre antes de la redirección es comprobación, no genera ninguna salida (HTML). Esto ocurre después, como consecuencia de la redirección que solicita con un GET la siguiente vista y es allí donde se comprueban los errores de validación mediante el contexto de validación en $_SESSION (ruta A) o los errores de la lógica de negocio mediante el parámetro resultado en la URL y el sistema de alertas (ruta B)
+
+Atención!!! El patrón flash data, proporciona un sistema de comunicación efímero entre peticiones, se pasa con datos y una vez se comprueba, se borra.
