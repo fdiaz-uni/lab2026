@@ -1,0 +1,96 @@
+﻿===============================================================================
+SESIÓN 6 - OPTIMIZACIÓN UX: VALIDACIÓN ASÍNCRONA EN EL CLIENTE (JQUERY)
+===============================================================================
+
+Esta sesión introduce la capa de optimización visual y de rendimiento en la interfaz de usuario (UI) mediante el uso de JavaScript (jQuery), integrándola de forma simétrica con las directrices de seguridad del servidor construidas en la sesión 5.
+
+-------------------------------------------------------------------------------
+1. FILOSOFÍA DE DESARROLLO WEB: VALIDACIÓN EN DOS CAPAS
+-------------------------------------------------------------------------------
+Es fundamental entender el reparto de responsabilidades a la hora de validar la entrada de datos del usuario:
+* Cliente (JavaScript / jQuery): Su función es puramente estética y de rendimiento (UX,User eXperience). Intercepta el submit, evita envíos innecesarios de datos al servidor y ayuda, de forma interactiva al usuario, en la corrección de campos mediante alertas visuales inmediatas.
+* Servidor (PHP / filter_var): Es la única capa con valor de seguridad. Si el cliente se salta (por ejemplo, vulnerando peticiones vía Postman o deshabilitando JS), el backend detiene y/o sanea el dato antes de invocarse al modelo de persistencia.
+
+-------------------------------------------------------------------------------
+2. INYECCIÓN ORDENADA DE SCRIPTING ASÍNCRONO EN LA PLANTILLA
+-------------------------------------------------------------------------------
+Para evitar el bloqueo de renderizado visual del navegador, las dependencias de scripting deben situarse de forma estricta al término del flujo HTML (antes del cierre de </body>) respetando el árbol de dependencias:
+1º jQuery Core Engine (Elemento base).
+2º jQuery Validation Plugin (Extensión del motor).
+3º Diccionario de Idiomas (messages_es.js) para la localización del texto de error.
+4º Script propio del negocio de la aplicación (comportamientoLadoCliente.js).
+
+-------------------------------------------------------------------------------
+3. INTEGRACIÓN ESTRUCTURAL DE COMPORTAMIENTOS CON BOOTSTRAP
+-------------------------------------------------------------------------------
+Haciendo uso de las funciones avanzadas callback del plugin ('highlight' y 'unhighlight'), se logra que JavaScript altere el DOM en tiempo real, inyectando las clases contextuales nativas de Bootstrap ('.has-error'). Obsérvese cómo la interfaz se comporta de manera homogénea e indistinguible, tanto si la validación proviene de una inspección local, como si proviene de la respuesta síncrona del backend.
+
+===============================================================================
+APÉNDICE: FUNDAMENTOS BÁSICOS DE LA API DE JQUERY VALIDATION (BOOTSTRAP 3.4.1)
+===============================================================================
+
+Para implementar validaciones en el lado del cliente mediante el plugin jQuery Validation, se deben conocer cinco aspectos fundamentales de su API y cómo acoplarlos a las clases de Bootstrap 3.4.1:
+
+1. EL PUNTO DE ENTRADA: EL MÉTODO .validate()
+-------------------------------------------------------------------------------
+Toda validación comienza esperando a que el árbol del DOM esté cargado. Dentro, se selecciona el formulario por su identificador único (ID) y se aplica el método .validate():
+
+   $(document).ready(function() {
+       if ($("#formPersona").length > 0) {
+           $("#formPersona").validate({
+               // Aquí van las opciones de configuración
+           });
+       }
+   });
+
+2. DEFINICIÓN DE REGLAS Y MENSAJES (rules y messages)
+-------------------------------------------------------------------------------
+Las reglas se configuran mediante un objeto JSON utilizando el atributo 'name' de cada campo del formulario (no su 'id'):
+
+   rules: {
+       fNombre:  { required: true, minlength: 3 },
+       fEmail:   { required: true, email: true },
+       fWebsite: { required: false, url: true },
+       fSexo:    { required: true }
+   },
+   messages: {
+       fNombre: {
+           required: "Este campo es obligatorio.",
+           minlength: "Debes escribir al menos {0} caracteres."
+       }
+   }
+   * Nota: Si se omite 'messages', el plugin mostrará automáticamente los textos en castellano, gracias al archivo messages_es.js cargado en la plantilla.
+
+3. PERSONALIZACIÓN DEL ELEMENTO DE ERROR (errorElement y errorClass)
+-------------------------------------------------------------------------------
+Cuando un campo falla, el plugin crea dinámicamente una etiqueta HTML justo debajo del input. Por defecto genera un <label class="error">. Para que adopte el estilo tipográfico de Bootstrap 3.4.1, se cambia la etiqueta y su clase:
+
+   errorElement: "span",     // Genera un <span> en lugar de un <label>
+   errorClass: "error"  // Clase nativa de Bootstrap 3 para textos de ayuda/error
+
+4. HOOKS VISUALES DE ESTADO (highlight y unhighlight)
+-------------------------------------------------------------------------------
+En Bootstrap 3.4.1, los campos y textos "se pinta" en rojo cuando su contenedor padre (<div class="form-group">) tiene la clase 'has-error'. Para añadir y quitar esta clase en tiempo real usamos los callbacks highlight y unhighlight:
+
+   highlight: function(element) {
+       // Busca el contenedor .form-group más cercano para que lo pinte de rojo
+       $(element).closest(".form-group").addClass("has-error");
+   },
+   unhighlight: function(element) {
+       // Devuelve el contenedor a su estado normal cuando se corrige el error
+       $(element).closest(".form-group").removeClass("has-error");
+   }
+
+5. UBICACIÓN DE ERRORES EN CONTROLES COMPUESTOS (errorPlacement)
+-------------------------------------------------------------------------------
+En controles agrupados como los botones de radio (radio buttons), insertar el mensaje justo después del primer <input> rompe la maquetación visual. El callback 'errorPlacement' permite controlar dónde se inyecta el <span> de error:
+
+   errorPlacement: function(error, element) {
+       if (element.prop("type") === "radio") {
+           // Inserta el mensaje al final del contenedor .form-group
+           error.insertAfter(element.closest(".form-group").children().last());
+       } else {
+           // Comportamiento estándar: justo debajo del input de texto
+           error.insertAfter(element);
+       }
+   }

@@ -1,0 +1,11 @@
+﻿span.error {
+	color: #a94442;
+	font-size: 12px;
+	margin-top: 5px;
+	display: block;
+	font-weight: bold;
+}
+input.error, textarea.error {
+	border-color: #a94442 !important;
+	background-color: #f2dede !important;
+}
