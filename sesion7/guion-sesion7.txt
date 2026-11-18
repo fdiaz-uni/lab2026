@@ -1,0 +1,70 @@
+﻿===============================================================================
+SESIÓN 7 - GESTIÓN DE USUARIOS, CONTROL DE SESIONES Y SEGURIDAD AVANZADA
+===============================================================================
+
+En esta última sesión completamos la arquitectura de la aplicación introduciendo la entidad 'Usuario'. El sistema pasa de ser un repositorio público y abierto a convertirse en una aplicación multiusuario privada, donde cada usuario gestiona exclusivamente sus propios contactos (aislamiento de datos), para lo cual será necesario asegurar que solo gestionen sus contactos (se requeriran unos pequeños cambios en la interfaz del modelo de Personas), contando con el soporte del modelo de datos subyacente.
+
+-------------------------------------------------------------------------------
+1. MODELADO DE DATOS RELACIONAL (recursos/sql/twebV2.sql)
+-------------------------------------------------------------------------------
+Para soportar múltiples usuarios aislados, la base de datos evoluciona con dos cambios estructurales fundamentales:
+
+* Nueva tabla 'Usuario': Almacena las credenciales de acceso (cId, cNombre, cEmail y cPassword). El campo cEmail tiene un índice UNIQUE para evitar 
+  cuentas (de usuario) duplicadas.
+* Vinculación con 'Persona': Se añade la columna 'cIdUsuario' como Clave Foránea (Foreign Key) apuntando a Usuario(cId) con la regla ON DELETE CASCADE (si se 
+  elimina un usuario, se eliminan automáticamente sus contactos). A mayores, se considera un Índice compuesto: El índice único del correo en 'Persona' pasa a ser compuesto UNIQUE(cIdUsuario, cEmail). Esto permite que dos usuarios distintos de la app puedan tener agendado al mismo contacto sin provocar colisiones en la BD.
+
+-------------------------------------------------------------------------------
+2. EL CONTROLADOR FRONTAL COMO CONTROLADOR (GUARDIÁN) DEl ACCESO (index.php)
+-------------------------------------------------------------------------------
+El enrutador frontal 'index.php' asume ahora el papel de barrera de autenticación antes de cargar cualquier vista privada:
+
+* Comprobación de identidad: Verifica si existe el array $_SESSION['usuario']. La existencia de esta variable de sesión IMPLICA QUE un usuario registrado en la app ha iniciado correctamente sesión en la aplición. En caso contrario, se asumirá que el usuario no ha iniciado sesión (de usuario), por lo que se considera un usuario anónimo.
+* Protección de rutas: Si un usuario anónimo intenta acceder directamente a 'index.php?seccion=personas' modificando la URL, el Controlador Frontal 
+  intercepta la petición y lo redirige inmediatamente hacia la vista de login con una alerta de advertencia (?resultado=auth-required).
+
+-------------------------------------------------------------------------------
+3. SEGURIDAD EN EL CICLO DE VIDA DE LA SESIÓN (src/controladores/usuario.php)
+-------------------------------------------------------------------------------
+El controlador de usuario gestiona únicamente dos acciones: 'login' y 'logout'. Ambas se ejecutan obligatoriamente mediante peticiones POST (ya que se considera que en ambos casos se modifica el ESTADO (temporal, el mantenido en la sesión) de la aplicación):
+
+A) Control de Precondiciones de Estado (Guardas de Sesión):
+   - Antes de procesar cualquier acción, el controlador verifica el estado actual de $_SESSION['usuario'] para evitar transiciones inconsistentes (por ejemplo, si el usuario tiene dos pestañas abiertas):
+     * En el Login: Si el usuario ya está autenticado, se aborta el proceso y se le redirige directamente a su listado de contactos, evitando sobrescribir 
+       una sesión activa con un segundo login. Esta misma regla se aplica en 'index.php' si intenta cargar la vista de login estando ya logueado.
+     * En el Logout: Solo se permite destruir la sesión si existe un usuario autenticado previamente. En caso contrario, se redirige al login con una 
+       alerta de advertencia (?resultado=auth-required).
+
+B) Prevención de Fijación de Sesión (Session Fixation):
+   - Justo tras verificar que las credenciales son válidas, se ejecuta la función nativa: session_regenerate_id(true);
+   - Por qué es IMPORTANTE: Si un atacante consiguió un identificador de sesión (PHPSESSID) conocido en el navegador de la víctima antes de que iniciara sesión (secuestro o fijación del identificador de sesión), esta función destruye el identificador antiguo y genera uno nuevo y aleatorio en el momento de autenticar, neutralizando el secuestro.
+
+C) Cierre de sesión seguro mediante POST (Logout):
+   - Al igual que el borrado de registros, cerrar sesión altera el estado del servidor y nunca debe hacerse mediante un enlace simple <a> (petición GET), 
+     ya que un atacante podría incrustar una etiqueta <img src=".../logout"> en otra web para cerrar la sesión de la víctima sin su consentimiento (CSRF).
+   - Al hacer logout por POST, se borra la variable de $_SESSION correspondiente, se invalida la cookie de sesión en el navegador del cliente mediante setcookie() con tiempo pasado, y se destruye el archivo de sesión en el servidor con session_destroy().
+
+-------------------------------------------------------------------------------
+4. PREVENCIÓN DE VULNERABILIDADES IDOR (src/modelos/persona.php)
+-------------------------------------------------------------------------------
+Una vulnerabilidad IDOR (Insecure Direct Object Reference) ocurre cuando una aplicación confía en el identificador que envía el usuario (ej: ?id=5) sin 
+comprobar si ese registro realmente le pertenece.
+
+* Cómo se mitiga: Todas las consultas del modelo (SELECT, UPDATE, DELETE) reciben ahora, como parámetro obligatorio, el $idUsuario extraído de la sesión del 
+  servidor ($_SESSION['usuario']['cId']) y lo incluyen en la cláusula WHERE de cada consulta, por ejemplo:
+  
+     DELETE FROM Persona WHERE cId = ? AND cIdUsuario = ?
+
+* Resultado: Aunque un usuario malicioso inspeccione el HTML y cambie el valor del campo oculto 'fId' por el ID de un contacto que pertenece a otro usuario, 
+  la base de datos no encontrará coincidencias y bloqueará la operación.
+
+-------------------------------------------------------------------------------
+5. TRABAJAO A REALIZAR: REGISTRO CON CIFRADO DE CONTRASEÑAS (HASHING)
+-------------------------------------------------------------------------------
+En el código base proporcionado, las contraseñas en la tabla 'Usuario' se almacenan y comparan en texto plano ($password === $usuario['cPassword']). En un 
+entorno real, esto es una brecha crítica si la base de datos se ve comprometida.
+
+* Objetivo del trabajo a realizar: Modificar el modelo y crear un script de registro utilizando las funciones criptográficas nativas de PHP:
+  1. Al guardar/registrar una contraseña, generar un hash seguro con algoritmo Bcrypt/Argon2 mediante: password_hash($password, PASSWORD_DEFAULT);
+  2. En la función autenticarUsuario() de 'src/modelos/usuario.php', sustituir la comparación directa (===) por la verificación criptográfica:
+     password_verify($password, $usuario['cPassword']);

@@ -1,0 +1,29 @@
+@startuml
+title Diagrama de Despliegue (ARQUITECTURA FÍSICA) - Aplicación Gestión de Personas (Sesión 7)
+
+skinparam nodeStyle rectangle
+skinparam componentStyle uml2
+
+node "Cliente Web" <<device>> as Cliente {
+    node "Navegador Web" <<executionEnvironment>> as Browser {
+        artifact "Front-end (HTML5 / CSS3 / JS)" as Frontend
+    }
+}
+
+node "Servidor (Entorno Linux / LAMP)" <<device>> as Server {
+    
+    node "Servidor Web Apache" <<executionEnvironment>> as Apache {
+        node "Intérprete PHP 8.x (mod_php)" <<executionEnvironment>> as PHP {
+            artifact "App Gestión Personas\n(/~usuario/lab2026/sesion7/)" as AppFiles
+        }
+    }
+    
+    node "Servidor de Base de Datos" <<executionEnvironment>> as DBServer {
+        database "MySQL (Esquema: twebV2)" as MySQL 
+    }
+}
+
+' Relaciones de red y protocolos
+Browser -down-> Apache : "Peticiones HTTP/HTTPS\n(GET Vistas / POST Controladores)"
+PHP -down-> MySQL : "TCP/IP (Puerto 3306)\nAPI MySQLi POO"
+@enduml

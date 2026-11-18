@@ -1,0 +1,72 @@
+@startuml
+title Diagrama de Componentes - Arquitectura MVC + PRG (Sesión 7)
+
+skinparam componentStyle uml2
+skinparam packageStyle rectangle
+
+package "Capa de Infraestructura Global (inc/)" {
+    [codigo_inicializacion.php\n(Sesiones, RAIZ_FISICA/URL, MySQLi)] as Init
+    [plantilla.php\n(NavBar principal & dinámica)] as Plantilla
+    [alertas.php\n(notificaciones resultado acciones)] as Alertas
+    [codigo_finalizacion.php\n(Cierre MySQLi, ob_end_flush)] as Fin
+}
+
+package "Punto de Entrada Único" {
+    [index.php\n(Front Controller & Control sesión usuario)] as FrontController
+}
+
+package "Capa de Presentación (src/vistas/)" {
+    package "Módulo Usuario" {
+        [usuario/login.php] as VistaLogin
+    }
+    package "Módulo Persona" {
+        [persona/indice.php] as VistaIndice
+        [persona/formulario.php\n(Componente Alta/Edición)] as CompForm
+    }
+}
+
+package "Capa de Control (src/controladores/)" {
+    [controladores/usuario.php\n(Login, Logout, Control de sesiones usuario)] as CtrlUsuario
+    [controladores/persona.php\n(Validación PHP, CRUD, PRG)] as CtrlPersona
+}
+
+package "Capa de Persistencia (src/modelos/)" {
+    [modelos/usuario.php\n(autenticarUsuario)] as ModUsuario
+    [modelos/persona.php\n(CRUD + Filtro IDOR cIdUsuario)] as ModPersona
+}
+
+package "Recursos Estáticos (recursos/)" {
+    [fichero-javascript-externo.js] as JSCliente
+    [fichero-css-externo.css] as CSSCliente
+}
+
+' Dependencias del Front Controller
+FrontController -down-> Init : "<<include>>"
+FrontController -down-> Plantilla : "<<include>>"
+FrontController -down-> Fin : "<<include>>"
+FrontController -down-> VistaLogin : "enruta (GET ?seccion=login)"
+FrontController -down-> VistaIndice : "enruta (GET ?seccion=personas)"
+FrontController -down-> CompForm : "enruta (GET &accion=modificar&id=ID)"
+
+' Dependencias de Plantilla y Vistas
+Plantilla -right-> Alertas : "<<include>>"
+Plantilla .down.> JSCliente : "carga"
+Plantilla .down.> CSSCliente : "carga"
+VistaIndice -down-> CompForm : "<<include>>\n(Modo Alta id=0)"
+VistaIndice -down-> ModPersona : "getPersonas()"
+CompForm -down-> ModPersona : "getPersona()"
+
+' Flujo de Controladores (POST -> PRG)
+VistaLogin -right-> CtrlUsuario : "HTTP POST\n(login)"
+Plantilla -right-> CtrlUsuario : "HTTP POST\n(logout)"
+CompForm -right-> CtrlPersona : "HTTP POST\n(nuevaModificarPersona)"
+VistaIndice -right-> CtrlPersona : "HTTP POST\n(borrarPersona)"
+
+CtrlUsuario -up-> Init : "<<include>>"
+CtrlUsuario -down-> ModUsuario : "consulta credenciales"
+CtrlUsuario .up.> FrontController : "HTTP 303 Redirect (PRG)"
+
+CtrlPersona -up-> Init : "<<include>>"
+CtrlPersona -down-> ModPersona : "consultas persistencia"
+CtrlPersona .up.> FrontController : "HTTP 303 Redirect (PRG)"
+@enduml

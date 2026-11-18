@@ -1,0 +1,85 @@
+@startuml
+title Diagrama de Secuencia - Control de Sesión de Usuario (Sesión 7)
+
+autonumber
+actor "Usuario\n(Cliente)" as Cliente
+participant "index.php\n(Front Controller)" as Front
+participant "src/vistas/usuario/\nlogin.php" as VistaLogin
+participant "src/controladores/\nusuario.php" as CtrlUser
+database "$_SESSION\n(ESTADO temporal)" as Sess
+participant "src/modelos/\nusuario.php" as ModUser
+database "MySQL\n(ESTADO persistente)" as BD
+
+== 1. INTENTO DE ACCESO A RUTA PROTEGIDA SIN SESIÓN DE USUARIO ==
+Cliente -> Front : GET /index.php?seccion=personas
+activate Front
+Front -> Sess : ¿Existe $_SESSION['usuario']?
+Sess --> Front : No (Usuario anónimo)
+Front --> Cliente : HTTP 303 See Other\nLocation: index.php?seccion=login&resultado=auth-required
+deactivate Front
+
+Cliente -> Front : GET /index.php?seccion=login&resultado=auth-required
+activate Front
+Front -> VistaLogin : include vista + alertas.php
+activate VistaLogin
+VistaLogin --> Cliente : HTML 200 OK (Alerta autorización requerida + Formulario Login)
+deactivate VistaLogin
+deactivate Front
+
+== 2. PROCESO DE LOGIN (POST -> PRG) ==
+Cliente -> CtrlUser : POST /src/controladores/usuario.php\n(fEmail, fPassword, login=1)
+activate CtrlUser
+
+CtrlUser -> Sess : Comprobación sesión de usuario: ¿Ya está logueado?
+Sess --> CtrlUser : No
+
+CtrlUser -> ModUser : autenticarUsuario($email, $password)
+activate ModUser
+ModUser -> BD : SELECT cId, cNombre, cEmail, cPassword\nFROM Usuario WHERE cEmail = ?
+BD --> ModUser : Datos del usuario
+ModUser -> ModUser : Verifica contraseña\n(unset cPassword)
+ModUser --> CtrlUser : Array $usuarioAutenticado (o false)
+deactivate ModUser
+
+alt Credenciales Incorrectas
+    CtrlUser -> Sess : guarda $_SESSION['datos_login'] (email)
+    CtrlUser --> Cliente : HTTP 303 See Other\nLocation: index.php?seccion=login&resultado=login-ko
+    Cliente -> Front : GET /index.php?seccion=login&resultado=login-ko
+    Front --> Cliente : HTML 200 OK (Alerta error usuario)
+
+else Credenciales Válidas
+    CtrlUser -> Sess : session_regenerate_id(true)\n(Prevención Session Fixation)
+    CtrlUser -> Sess : $_SESSION['usuario'] = $usuarioAutenticado
+    CtrlUser --> Cliente : HTTP 303 See Other\nLocation: index.php?seccion=personas&resultado=login-ok
+    deactivate CtrlUser
+
+    Cliente -> Front : GET /index.php?seccion=personas&resultado=login-ok
+    activate Front
+    Front -> Sess : ¿Existe $_SESSION['usuario']?
+    Sess --> Front : Sí (Autorizado)
+    Front --> Cliente : HTML 200 OK (Alerta bienvenida + Listado privado)
+    deactivate Front
+end
+
+== 3. PROCESO DE LOGOUT SEGURO (POST -> PRG) ==
+Cliente -> CtrlUser : POST /src/controladores/usuario.php\n(logout=1)
+activate CtrlUser
+
+CtrlUser -> Sess : Comprobación sesión de usuario: ¿Existe sesión activa?
+Sess --> CtrlUser : Sí
+
+CtrlUser -> Sess : Vacía $_SESSION = []
+CtrlUser --> Cliente : Set-Cookie: PHPSESSID expirada\n(Invalida cookie en navegador)
+CtrlUser -> Sess : session_destroy()\n(Elimina archivo de sesión en servidor)
+
+CtrlUser --> Cliente : HTTP 303 See Other\nLocation: index.php?seccion=login&resultado=logout-ok
+deactivate CtrlUser
+
+Cliente -> Front : GET /index.php?seccion=login&resultado=logout-ok
+activate Front
+Front -> VistaLogin : include vista + alertas.php
+activate VistaLogin
+VistaLogin --> Cliente : HTML 200 OK (Alerta sesión cerrada + Login)
+deactivate VistaLogin
+deactivate Front
+@enduml

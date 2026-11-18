@@ -1,0 +1,45 @@
+@startuml
+title Diagrama de Paquetes (ARQUITECTURA LÓGICA) - Aplicación Gestión de Personas (Sesión 7)
+
+skinparam packageStyle folder
+skinparam linetype ortho
+
+package "Raíz de Aplicación (Punto de Entrada)" as Root {
+    [index.php (Front Controller)]
+}
+
+package "src (Lógica de negocio - patrón MVC)" as Src {
+    
+    package "src.vistas (Capa de Presentación)" as Vistas {
+        package "vistas.persona" as VPersona
+        package "vistas.usuario" as VUsuario
+    }
+
+    package "src.controladores (Capa de Control)" as Controladores {
+        [controladores.persona]
+        [controladores.usuario]
+    }
+
+    package "src.modelos (Capa de Persistencia)" as Modelos {
+        [modelos.persona]
+        [modelos.usuario]
+    }
+
+}
+
+package "inc (Infraestructura y Utilidades)" as Inc {
+        [Config & Sesiones]
+        [Plantilla & Alertas]
+    }
+
+' Dependencias del Punto de Entrada
+Root ..> Inc : <<use>>
+Root ..> Vistas : <<use>> (enruta peticiones GET)
+
+' Dependencias internas del patrón MVC
+Vistas ..> Controladores : <<submit>> (peticiones HTTP POST)
+Vistas ..> Modelos : <<use>> (lectura de datos)
+
+Controladores ..> Modelos : <<use>> (operaciones CRUD / Auth)
+Controladores ..> Root : <<redirect>> (Patrón PRG HTTP 303)
+@enduml

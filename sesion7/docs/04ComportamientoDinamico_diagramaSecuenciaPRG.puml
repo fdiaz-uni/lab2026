@@ -1,0 +1,79 @@
+@startuml
+title Diagrama de Secuencia - Patrón PRG y Validación (Sesión 7)
+
+autonumber
+actor "Usuario\n(Cliente)" as Cliente
+participant "index.php\n(Front Controller)" as Front
+participant "src/vistas/persona/\nindice.php + formulario.php" as Vista
+participant "src/controladores/\npersona.php" as Ctrl
+database "$_SESSION\n(ESTADO temporal)" as Sess
+participant "src/modelos/\npersona.php" as Mod
+database "MySQL\n(ESTADO persistente)" as BD
+
+== 1. FASE GET INICIAL: Carga del formulario ==
+Cliente -> Front : GET /index.php?seccion=personas
+activate Front
+Front -> Vista : include vista
+activate Vista
+Vista -> Sess : Comprueba si hay errores/datos previos
+Sess --> Vista : Vacío
+Vista -> Mod : getPersonas($idUsuario)
+activate Mod
+Mod -> BD : SELECT ... WHERE cIdUsuario = ?
+BD --> Mod : Filas de contactos
+Mod --> Vista : Array de personas
+deactivate Mod
+Vista --> Cliente : HTML 200 OK (Formulario + Tabla)
+deactivate Vista
+deactivate Front
+
+== 2. FASE POST: Envío del formulario y Validación ==
+Cliente -> Ctrl : POST /src/controladores/persona.php\n(fNombre, fEmail, nuevaModificarPersona=1)
+activate Ctrl
+
+alt Caso A: Fallo en la Validación Servidor (ej. Email inválido)
+    Ctrl -> Sess : Guarda $_SESSION['errores_persona']\ny $_SESSION['datos_persona']
+    Ctrl --> Cliente : HTTP 303 See Other\nLocation: index.php?seccion=personas
+    note right of Cliente : El navegador descarta la petición POST\ny lanza automáticamente un GET
+    Cliente -> Front : GET /index.php?seccion=personas
+    activate Front
+    Front -> Vista : include vista
+    activate Vista
+    Vista -> Sess : Lee errores y datos escritos (Flash Data)
+    Vista -> Sess : unset() limpia la sesión
+    Vista --> Cliente : HTML 200 OK (Formulario con errores en rojo\ny valores conservados)
+    deactivate Vista
+    deactivate Front
+
+else Caso B: Validación Correcta (Flujo de Éxito)
+    Ctrl -> Mod : nuevaPersona($idUsuario, $nombre, ...)
+    activate Mod
+    Mod -> BD : INSERT INTO Persona ...
+    BD --> Mod : OK (1 fila insertada)
+    Mod --> Ctrl : Retorna OK
+    deactivate Mod
+
+    == 3. FASE REDIRECT (303): Redirección limpia ==
+    Ctrl --> Cliente : HTTP 303 See Other\nLocation: index.php?seccion=personas&resultado=persona-added
+    deactivate Ctrl
+
+    == 4. FASE GET FINAL: Visualización del resultado ==
+    Cliente -> Front : GET /index.php?seccion=personas&resultado=persona-added
+    activate Front
+    Front -> Vista : include vista + inc/alertas.php
+    activate Vista
+    Vista -> Mod : getPersonas($idUsuario)
+    activate Mod
+    Mod -> BD : SELECT ... WHERE cIdUsuario = ?
+    BD --> Mod : Filas actualizadas
+    Mod --> Vista : Array actualizado
+    deactivate Mod
+    Vista --> Cliente : HTML 200 OK (Alerta verde + Nueva tabla)
+    deactivate Vista
+    deactivate Front
+
+    == 5. PRUEBA DE SEGURIDAD: El usuario pulsa F5 (Refrescar) ==
+    Cliente -> Front : F5 -> Repite la última petición\n(GET /index.php?seccion=personas&resultado=persona-added)
+    note over Cliente, BD : Como la última petición fue un GET y no un POST,\nNO se duplica el registro en la base de datos.
+end
+@enduml
