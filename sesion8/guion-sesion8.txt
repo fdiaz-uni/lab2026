@@ -1,0 +1,196 @@
+===============================================================================
+SESIÓN 8 - DESACOPLAMIENTO BACKEND: DISEÑO Y CONSTRUCCIÓN DE UNA API REST
+===============================================================================
+La aplicación desarrollada hasta la Sesión 7 se basa en la aplicación del patrón clásico MVC (Modelo-Vista-Controlador) y PRG (Post-Redirect-Get). Este enfoque se denomina, de forma genérica, como renderizado en el lado servidor (SSR, Server-Side Rendering). En esta y las restantes sesiones se va a migrar la aplicación hacia una arquitectura basada en API REST, lo que permite desacoplar el lado cliente (o front-end) del lado servidor (o back-end), construyéndose una SPA (Single Page Application).
+
+Con respecto a lo desarrollado hasta ahora, el nuevo enfoque PERMITE REUTILIZAR lo siguiente:
+* La base de datos (recursos/sql/twebV2.sql)
+* Capa de Modelos (src/modelos/): Todas tus consultas preparadas (getPersonas, nuevaPersona, modificarPersona, borrarPersona, autenticarUsuario) siguen sirviendo tal cual, ya que devuelven arrays asociativos o códigos de estado (OK, NO_EXISTE_PERSONA, etc.).
+* Validación en el Servidor (filter_var): Las reglas de validación en PHP siguen siendo obligatorias.
+
+QUÉ CAMBIOS SON NECESARIOS PARA MIGRAR la Arquitectura Actual (Sesión 7, SSR) a la Nueva Arquitectura basada en API REST:
+
+Formato de Respuesta	El servidor devuelve páginas HTML 		El servidor nunca devuelve HTML. Solo devuelve datos
+						completas (plantilla.php, indice.php).	JSON (json_encode()) y cabeceras 
+																Content-Type: application/json.
+						
+Control de Flujo		Patrón PRG (header("Location: ...") 	Sin redirecciones HTTP. El servidor responde con 
+						con código HTTP 303).					Códigos de Estado HTTP semánticos (200 OK, 201 Created,
+																400 Bad Request, 401 Unauthorized, 404 Not Found).
+																
+																
+Métodos HTTP			Solo se usan GET (ver) y POST (crear,	Se usan verbos RESTful sobre los recursos
+						editar, borrar, login, logout).	 		(/api/personas): GET (listar/ver), POST (crear), 
+																PUT (modificar), DELETE (borrar).
+Gestión de Sesión/Auth	Basada en estado en el servidor 		Idealmente Stateless (Sin estado) mediante Tokens (JWT), 
+						($_SESSION y cookie PHPSESSID).			aunque puede mantenerse $_SESSION como paso intermedio.
+
+
+Capa de Vista 			Archivos .php que mezclan HTML y 		Desaparece el PHP de las vistas. Se convierte en
+						PHP (foreach, htmlspecialchars).	 	una SPA (Single Page Application) con HTML estático
+																y JavaScript (fetch API) que pinta el DOM dinámicamente.
+																
+Seguridad XSS			htmlspecialchars() en PHP al imprimir.	Saneamiento en JavaScript al insertar en el DOM 
+																(usando .textContent en lugar de .innerHTML).
+
+
+En esta primera sesión se inicia la transformación arquitectónica de la aplicación, convirtiendo el en una API RESTful pura. Es decir, el servidor deja de generar código HTML y pasa a actuar exclusivamente como un proveedor de datos en formato 
+JSON, preparando el terreno para un cliente desacoplado (SPA).
+
+-------------------------------------------------------------------------------
+1. PARADIGMA REST: RECURSOS, MÉTODOS HTTP Y CÓDIGOS DE ESTADO
+-------------------------------------------------------------------------------
+En una API REST, la comunicación entre cliente y servidor se basa en tres pilares:
+
+A) Identificación de Recursos:
+   - En lugar de apuntar a acciones o scripts visuales (ej. borrar-persona.php), las URLs identifican entidades o recursos del dominio ('personas', 'auth').
+   - Para mantener compatibilidad total sin depender de reglas de reescritura (.htaccess), se mantendrá el enrutamiento utilizando parámetros en la Query String sobre un único punto de entrada: api.php?recurso=personas&id={ID}
+
+B) Semántica de los Métodos HTTP:
+   - GET:    Consultar colecciones (?recurso=personas) o un recurso (?id={ID}).
+   - POST:   Crear un nuevo recurso o ejecutar acciones de estado (login/logout).
+   - PUT:    Actualizar íntegramente un recurso existente (?recurso=personas&id={ID}).
+   - DELETE: Eliminar un recurso existente (?recurso=personas&id={ID}).
+   
+   
+ATENCIÓN!!!: Para esta sesión, se incluye un archivo .htaccess para habilitar expresamente el procesamiento de estos métodos por parte del servidor Apache (por defecto, solo se sirven peticiones GET, POST y OPTIONS)
+
+C) Códigos de Estado HTTP Semánticos (Sustituyen a las redirecciones 303):
+   - 200 OK:          			Petición procesada con éxito (GET, PUT, DELETE, Login/Logout).
+   - 201 Created:				Recurso creado con éxito tras un POST (devuelve el nuevo ID).
+   - 400 Bad Request:			Errores de validación en los datos enviados o JSON malformado.
+   - 401 Unauthorized: 			Usuario no autenticado o credenciales de login incorrectas.
+   - 404 Not Found:   			Recurso/ruta inexistente o intento de acceso ajeno (IDOR).
+   - 405 Method Not Allowed:	Verbo HTTP no soportado para ese endpoint.
+   - 409 Conflict:    			Violación de integridad en BD (ej. email duplicado UNIQUE).
+
+-------------------------------------------------------------------------------
+2. SIMPLIFICACIÓN DE LA INFRAESTRUCTURA SERVIDOR (inc/)
+-------------------------------------------------------------------------------
+Al no existir renderizado HTML ni redirecciones HTTP en el back-end, la capa de infraestructura se simplifica:
+
+* Eliminación de Vistas y Plantillas: Desaparecen 'inc/plantilla.php', 'inc/alertas.php' y toda la carpeta 'src/vistas/'.
+* Sin Búfer de Salida ni Finalización Externa: Se prescinde de ob_start() y de 'inc/codigo_finalizacion.php'. Todo el procesamiento ocurre en memoria y la respuesta única (cabeceras + cuerpo JSON) se genera de forma unitaria al final.
+* Inicializador simplificado (inc/codigo_inicializacion.php): Conserva únicamente session_start(), la constante RAIZ_FISICA, las constantes de estado y la instancia de conexión orientada a objetos $conexionBD.
+
+-------------------------------------------------------------------------------
+3. EL ENRUTADOR FRONTAL REST (api.php)
+-------------------------------------------------------------------------------
+Sustituye a 'index.php' como punto de entrada al back-end:
+
+* Cabecera Global: Fija 'Content-Type: application/json; charset=UTF-8' para informar al cliente que toda respuesta generada por el servidor, se devolverá en el cuerpo de la respuesta de la petición HTTP serializada en formato JSON.
+* Función Auxiliar responderJSON($codigoHTTP, $datos): Centraliza el envío de respuestas fijando el código de estado con http_response_code(), codificando el array PHP de respuesta con la función json_encode(..., JSON_UNESCAPED_UNICODE), cerrando la conexión a BD y deteniendo la ejecución con exit().
+* Control de acceso a nivel de sesión de usuario: Antes de cargar 'persona_rest.php', se comprueba si existe $_SESSION['usuario']. Si no hay sesión, se interrumpe la ejecución devolviendo un error 401 Unauthorized en JSON.
+
+-------------------------------------------------------------------------------
+4. LECTURA DE DATOS CRUDOS: php://input (src/controladores/*_rest.php)
+-------------------------------------------------------------------------------
+* Se deja de utilizar $_POST: PHP solo rellena la superglobal $_POST cuando recibe formularios web tradicionales mediante el método POST. En una API REST, el cliente envía objetos JSON puros en el cuerpo de la petición y utiliza métodos como PUT o DELETE.
+* Flujo de entrada crudo: Para capturar los datos enviados en POST y PUT, se lee el flujo de entrada directamente desde el servidor, decodificándolo:
+  
+     $entradaJSON = json_decode(file_get_contents("php://input"), true);
+
+* Reutilización Total del Modelo: La capa de persistencia ('src/modelos/') se reutiliza al 100% respecto a la Sesión 7. Los controladores REST validan la entrada, invocan a las funciones del modelo (manteniendo el filtrado por $idUsuario contra ataques IDOR) y traducen los códigos internos (OK, NO_EXISTE_PERSONA) a códigos HTTP y respuestas JSON.
+
+-------------------------------------------------------------------------------
+5. PRUEBAS DE BACKEND CON POSTMAN (SIN INTERFAZ GRÁFICA)
+-------------------------------------------------------------------------------
+Dado que el frontend aún no está implementado, utilizaremos Postman como cliente HTTP para verificar cada endpoint de forma aislada:
+
+* Gestión de Sesiones en Postman: Postman actúa como un navegador almacenando automáticamente la cookie 'PHPSESSID' tras ejecutar POST ?recurso=auth&accion=login, enviándola de forma transparente en las siguientes peticiones de personas.
+* Batería de Verificación Obligatoria:
+  1. Comprobar que GET ?recurso=personas sin login devuelve 401 Unauthorized.
+  2. Ejecutar login correcto (200 OK) y verificar estado con GET ?accion=miperfil.
+  3. Probar validación servidor enviando datos erróneos en POST (400 Bad Request).
+  4. Completar el ciclo CRUD: Crear (201), Listar (200), Modificar con PUT (200), probar colisión UNIQUE (409) y Eliminar con DELETE (200).
+  5. Cambiar de usuario y verificar que intentar borrar/leer un ID ajeno devuelve 404 Not Found (protección IDOR).
+
+-------------------------------------------------------------------------------
+ANEXO I: Endpoints de Autenticación (/api.php?recurso=auth) (o usuario)
+-------------------------------------------------------------------------------
+
+Acción:					Iniciar sesión
+Método HTTP:			POST	
+Ruta (endpoint):		api.php?recurso=auth&accion=login
+Cuerpo Petición (JSON):	{"email": "...", "password": "..."}
+Respuesta Éxito:		200 OK
+						{"estado": "ok", "mensaje": "Sesión iniciada correctamente.", "usuario": {"id": 1, "nombre": "usuario1"}}
+Respuesta Error:		400 Bad Request (Faltan datos)
+						401 Unauthorized (Credenciales inválidas)
+
+
+Acción:					Cerrar sesión
+Método HTTP:			POST	
+Ruta (endpoint):		api.php?recurso=auth&accion=logout
+Cuerpo Petición (JSON):	(vacío)
+Respuesta Éxito:		200 OK
+						{"estado": "ok", "mensaje": "Sesión cerrada correctamente"}
+Respuesta Error:		401 Unauthorized (No autenticado)
+
+
+Acción:					Verificar sesión
+Método HTTP:			GET
+Ruta (endpoint):		api.php?recurso=auth&accion=miperfil
+Cuerpo Petición (JSON):(vacío)
+Respuesta Éxito:		200 OK
+						{"estado": "ok", "mensaje": "Sesión iniciada correctamente.", "usuario": {"id": 1, "nombre": "usuario1"}}
+Respuesta Error:		401 Unauthorized (No autenticado)
+
+
+
+-------------------------------------------------------------------------------
+ANEXO II: Endpoints de Personas (/api.php?recurso=personas)
+-------------------------------------------------------------------------------
+Todas estas rutas están protegidas y se filtran automáticamente por el cIdUsuario extraído de la sesión del usuario autenticado.
+
+Acción:					Listar contactos
+Método HTTP:			GET		
+Ruta (endpoint):		api.php?recurso=personas
+Cuerpo Petición (JSON):	(vacío)
+Respuesta Éxito:		200 OK
+						{"estado": "ok", "mensaje": "Listado recuperado con éxito.", "listado": [{"cId": 1, "cNombre": "Ana", "cEmail": "..."}, ...]}
+Respuesta Error:		401 Unauthorized
+
+
+Acción:					Obtener un contacto
+Método HTTP:			GET	
+Ruta (endpoint):		api.php?recurso=personas&id={ID}
+Cuerpo Petición (JSON):	(Vacío)
+Respuesta Éxito:		200 OK
+						{"estado" => "ok", "mensaje" => "Contacto recuperado con éxito."], "contacto": {"cId": 1, "cNombre": "Ana", "cEmail": "...", "cWebsite": "...", "cComentario": "...", "cSexo": "M"}}
+Respuesta Error:		401 Unauthorized
+						404 Not Found (IDOR / Inexistente)
+
+
+Acción:					Crear contacto
+Método HTTP:			POST	
+Ruta (endpoint):		
+Cuerpo Petición (JSON):	{"nombre": "...", "email": "...", "website": "...", "comentario": "...", "sexo": "M"}
+Respuesta Éxito:		201 Created
+						{"estado": "ok", "mensaje": "Persona creada", "id": 12}
+Respuesta Error:		400 Bad Request (Errores validación datos entrada)
+						409 Conflict (Email duplicado UNIQUE)
+
+
+Acción:					Modificar contacto
+Método HTTP:			PUT	
+Ruta (endpoint):		api.php?recurso=personas
+Cuerpo Petición (JSON):	{"nombre": "...", "email": "...", "website": "...", "comentario": "...", "sexo": "M"}
+Respuesta Éxito:		200 OK
+						{"estado": "ok", "mensaje": "Persona actualizada"}
+Respuesta Error:		400 Bad Request (Errores validación datos entrada)
+						404 Not Found (IDOR / Inexistente)
+						409 Conflict (Email duplicado)
+
+
+Acción:					Eliminar contacto
+Método HTTP:			DELETE	
+Ruta (endpoint):		api.php?recurso=personas&id={ID}
+Cuerpo Petición (JSON):	(Vacío)
+Respuesta Éxito:		200 OK
+						{"estado": "ok", "mensaje": "Persona eliminada"}
+Respuesta Error:		401 Unauthorized
+						404 Not Found (IDOR / Inexistente)
+
+
+

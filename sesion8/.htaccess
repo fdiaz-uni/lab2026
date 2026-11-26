@@ -1,0 +1,9 @@
+# Habilitar los verbos RESTful necesarios (PUT y DELETE) además de los estándar
+<Limit GET POST PUT DELETE OPTIONS>
+    Require all granted
+</Limit>
+
+# Denegar explícitamente cualquier otro verbo HTTP no contemplado (por seguridad)
+<LimitExcept GET POST PUT DELETE OPTIONS>
+    Require all denied
+</LimitExcept>
